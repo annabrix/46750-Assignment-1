@@ -21,6 +21,7 @@ from src.scenarios import scale_prices, scale_pv, set_tariffs
 
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 
+#%%
 
 def run_base_case(question: str, out: Path, show: bool) -> Results | None:
     data = load_question(question)
