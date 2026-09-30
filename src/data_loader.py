@@ -63,7 +63,7 @@ class InputData:
     # Flexible load (from the "loads" catalogue)
     load_max_kWh: float                   # maximum hourly consumption, kWh/h
     load_min_kWh: float                   # minimum hourly consumption, kWh/h
-    consumption_utility: float | None     # DKK per kWh consumed (Question 1; None otherwise)
+    consumption_utility: float #| None     # DKK per kWh consumed (Question 1; None otherwise)
     min_daily_energy_kWh: float | None    # minimum energy to consume over the day (Question 3)
     reference_load: np.ndarray | None     # preferred hourly consumption, kWh/h
                                           # = load_max_kWh * reference_load_capacity_factor

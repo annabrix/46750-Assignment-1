@@ -132,7 +132,7 @@ class FlexibleConsumerModel:
         # TODO: express the objective function and its direction (GRB.MINIMIZE or GRB.MAXIMIZE):
         #   m.setObjective(gp.quicksum(<expression in t> for t in T), <direction>)
         # The input-data attributes (with units) are documented in src/data_loader.py (InputData).
-        m.setObjective(gp.quicksum(d.load_utility * L[t] - d.pv_cost * PV[t] - p_imp[t] * P_imp[t] + p_exp[t] * P_exp[t] for t in T), GRB.MAXIMIZE)
+        m.setObjective(gp.quicksum(d.consumption_utility * L[t] - d.pv_marginal_cost * PV[t] - p_imp[t] * P_imp[t] + p_exp[t] * P_exp[t] for t in T), GRB.MAXIMIZE)
 
         # --- Constraints -------------------------------------------------------------
         # TODO: add the constraints of your formulation.
@@ -144,13 +144,25 @@ class FlexibleConsumerModel:
         #   self.con["<name>"] = m.addConstr(<lhs expression> - <rhs expression> <= 0, name="<name>")
         # self.con["<name>"] = m.addConstrs(
         #     (<lhs expression> - <rhs expression> <= 0 for t in T), name="<name>")
-        
+
         self.con["balance"] = m.addConstrs(
             (P_imp[t] + PV[t] - L[t] - P_exp[t] == 0 for t in T), name="balance")
 
         self.con["pv_max"] = m.addConstrs(
             (PV[t] - d.pv_available[t] <= 0 for t in T), name="pv_max")
 
+        self.con["load_min"] = m.addConstrs(
+            (d.load_min_kWh - L[t] <= 0 for t in T), name="load_min")
+
+        self.con["load_max"] = m.addConstrs(
+            (L[t] - d.load_max_kWh <= 0 for t in T), name="load_max")
+        # self.con["load_bounds"] = m.addConstrs(
+        #     (L[t] - d.load_max_kWh <= 0 for t in T), name="load_bounds")
+
+        # self.con["load_min"] = m.addConstrs(
+        #     (L[t] - d.load_min_kWh >= 0 for t in T), name="load_min")
+
+        #Overvej om der skal være Pimp >= 0 og Pexp >= 0 constraints, men det er vel implicit i objective function?
 
         m.update()
         return self
