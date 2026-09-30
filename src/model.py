@@ -108,11 +108,31 @@ class FlexibleConsumerModel:
         #   a bound you want a dual for must be an explicit constraint, not lb=/ub= (see the README).
         # * naming the families "import", "export", "load", "pv" makes the standard plots of
         #   src/plotting.py work out of the box.
+        # --- Decision variables ---
+
+        self.var["import"] = m.addVars(T, lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS, name="import")
+
+        self.var["export"] = m.addVars(T, lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS, name="export")
+        
+        self.var["load"] = m.addVars(T, lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS, name="load")
+        
+        self.var["pv"] = m.addVars(T, lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS, name="pv")
+
+        #Rewrite so its easier to gennemskue
+        P_imp = self.var["import"]
+        P_exp = self.var["export"]
+        L = self.var["load"]
+        PV = self.var["pv"]
+
+        #Defines the actual import and export prices for each hour, with tariffs
+        p_imp = d.energy_price + d.import_tariff
+        p_exp = d.energy_price - d.export_tariff
 
         # --- Objective ---------------------------------------------------------------
         # TODO: express the objective function and its direction (GRB.MINIMIZE or GRB.MAXIMIZE):
         #   m.setObjective(gp.quicksum(<expression in t> for t in T), <direction>)
         # The input-data attributes (with units) are documented in src/data_loader.py (InputData).
+        m.setObjective(gp.quicksum(d.load_utility * L[t] - d.pv_cost * PV[t] - p_imp[t] * P_imp[t] + p_exp[t] * P_exp[t] for t in T), GRB.MAXIMIZE)
 
         # --- Constraints -------------------------------------------------------------
         # TODO: add the constraints of your formulation.
@@ -122,6 +142,15 @@ class FlexibleConsumerModel:
         #       (<lhs expression> - <rhs expression> <= 0 for t in T), name="<name>")
         # Pattern for a single constraint (dual returned as a scalar):
         #   self.con["<name>"] = m.addConstr(<lhs expression> - <rhs expression> <= 0, name="<name>")
+        # self.con["<name>"] = m.addConstrs(
+        #     (<lhs expression> - <rhs expression> <= 0 for t in T), name="<name>")
+        
+        self.con["balance"] = m.addConstrs(
+            (P_imp[t] + PV[t] - L[t] - P_exp[t] == 0 for t in T), name="balance")
+
+        self.con["pv_max"] = m.addConstrs(
+            (PV[t] - d.pv_available[t] <= 0 for t in T), name="pv_max")
+
 
         m.update()
         return self
