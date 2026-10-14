@@ -109,6 +109,8 @@ class FlexibleConsumerModel:
         # * naming the families "import", "export", "load", "pv" makes the standard plots of
         #   src/plotting.py work out of the box.
 
+        
+
         # --- Objective ---------------------------------------------------------------
         # TODO: express the objective function and its direction (GRB.MINIMIZE or GRB.MAXIMIZE):
         #   m.setObjective(gp.quicksum(<expression in t> for t in T), <direction>)
