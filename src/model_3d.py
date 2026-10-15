@@ -303,11 +303,11 @@ class FlexibleConsumerModel:
         # ==========================================================
 
         self.con["min_daily_energy"] = m.addConstr(
-            gp.quicksum(
+            d.min_daily_energy_kWh - gp.quicksum(
                 load[t]
                 for t in T
             )
-            >= d.min_daily_energy_kWh,
+            <= 0,
             name="min_daily_energy",
         )
 

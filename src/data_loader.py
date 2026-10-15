@@ -64,19 +64,19 @@ class InputData:
     load_max_kWh: float                   # maximum hourly consumption, kWh/h
     load_min_kWh: float                   # minimum hourly consumption, kWh/h
     consumption_utility: float #| None     # DKK per kWh consumed (Question 1; None otherwise)
-    min_daily_energy_kWh: float | None    # minimum energy to consume over the day (Question 3)
-    reference_load: np.ndarray | None     # preferred hourly consumption, kWh/h
+    min_daily_energy_kWh: float #| None    # minimum energy to consume over the day (Question 3)
+    reference_load: np.ndarray #| None     # preferred hourly consumption, kWh/h
                                           # = load_max_kWh * reference_load_capacity_factor
-    linear_disutility: float | None       # DKK per kWh of absolute deviation from reference_load
-    quadratic_disutility: float | None    # DKK per kWh^2 of deviation from reference_load
+    linear_disutility: float # | None       # DKK per kWh of absolute deviation from reference_load
+    quadratic_disutility: float #| None    # DKK per kWh^2 of deviation from reference_load
 
     # Battery (Q3_battery only; from the "storages" catalogue; all None when absent)
-    battery_capacity_kWh: float | None = None
-    battery_max_charge_kW: float | None = None
-    battery_max_discharge_kW: float | None = None
-    battery_charging_efficiency: float | None = None      # fraction of charged energy reaching the battery
-    battery_discharging_efficiency: float | None = None   # fraction of discharged energy reaching the consumer
-    battery_initial_soc_kWh: float | None = None          # state of charge at the start of the day
+    battery_capacity_kWh: float# | None = None
+    battery_max_charge_kW: float #| None = None
+    battery_max_discharge_kW: float #| None = None
+    battery_charging_efficiency: float #| None = None      # fraction of charged energy reaching the battery
+    battery_discharging_efficiency: float #| None = None   # fraction of discharged energy reaching the consumer
+    battery_initial_soc_kWh: float #| None = None          # state of charge at the start of the day
     battery_final_soc_kWh: float | None = None            # None ON PURPOSE: the end-of-horizon treatment is
                                                           # your modeling choice (Question 3.(g))
 
