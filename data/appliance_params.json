@@ -134,7 +134,7 @@
       "load_id": "FL_02_L",
       "load_type": "flexible load",
       "consumption_utility_DKK_per_kWh": null,
-      "linear_disutility_DKK_per_kWh": 1.5,
+      "linear_disutility_DKK_per_kWh": 1.4,
       "quadratic_disutility_DKK_per_kWh2": null,
       "min_total_energy_per_day_kWh": null,
       "max_load_KWh_per_hour": 6.0,
