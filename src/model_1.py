@@ -118,13 +118,13 @@ class FlexibleConsumerModel:
 
         m.setObjective(
             gp.quicksum(
-                d.consumption_utility * load[t]
-                - d.pv_marginal_cost * pv[t]
-                - p_imp[t] * p_import[t]
-                + p_exp[t] * p_export[t]
+                - d.consumption_utility * load[t]
+                + d.pv_marginal_cost * pv[t]
+                + p_imp[t] * p_import[t]
+                - p_exp[t] * p_export[t]
                 for t in T
             ),
-            GRB.MAXIMIZE
+            GRB.MINIMIZE
         )
 
         self.con["balance"] = m.addConstrs(
