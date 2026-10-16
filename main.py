@@ -15,7 +15,7 @@ from pathlib import Path
 import matplotlib
 
 from src.data_loader import load_question, list_questions
-from src.model_3g import FlexibleConsumerModel, Results
+from src.model import FlexibleConsumerModel, Results
 from src.plotting import plot_duals, plot_inputs, plot_scenario_comparison, plot_schedule
 from src.scenarios import scale_prices, scale_pv, set_tariffs
 
@@ -67,7 +67,7 @@ def run_scenarios(question: str, out: Path) -> dict[str, Results]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--question", default="Q3_battery", choices=list_questions(), help="data case to use")
+    parser.add_argument("--question", default="Q1_caseA", choices=list_questions(), help="data case to use")
     parser.add_argument("--scenarios", action="store_true", help="also run the example sensitivity scenarios")
     parser.add_argument("--show", action="store_true", help="open the figures in a window")
     args = parser.parse_args()

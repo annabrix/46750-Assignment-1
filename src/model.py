@@ -83,8 +83,8 @@ class FlexibleConsumerModel:
 
     # ------------------------------------------------------------------ 2. build
     def build(self) -> "FlexibleConsumerModel":
-        """Question 2b:
-        Linear absolute-deviation disutility.
+        """Question 1:
+        Constant marginal utility.
         """
 
         d, m, T = self.data, self.m, self.T
@@ -92,11 +92,8 @@ class FlexibleConsumerModel:
         p_imp = d.energy_price + d.import_tariff
         p_exp = d.energy_price - d.export_tariff
 
-        if d.reference_load is None:
-            raise ValueError("Question 2b requires a reference load profile.")
-
-        if d.linear_disutility is None:
-            raise ValueError("Question 2b requires linear disutility.")
+        if d.consumption_utility is None:
+            raise ValueError("Question 1 requires consumption utility.")
 
         self.var["import"] = m.addVars(
             T, lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS, name="import"
@@ -114,25 +111,20 @@ class FlexibleConsumerModel:
             T, lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS, name="pv"
         )
 
-        self.var["deviation"] = m.addVars(
-            T, lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS, name="deviation"
-        )
-
         p_import = self.var["import"]
         p_export = self.var["export"]
         load = self.var["load"]
         pv = self.var["pv"]
-        deviation = self.var["deviation"]
 
         m.setObjective(
             gp.quicksum(
-                d.linear_disutility * deviation[t]
-                + d.pv_marginal_cost * pv[t]
-                + p_imp[t] * p_import[t]
-                - p_exp[t] * p_export[t]
+                d.consumption_utility * load[t]
+                - d.pv_marginal_cost * pv[t]
+                - p_imp[t] * p_import[t]
+                + p_exp[t] * p_export[t]
                 for t in T
             ),
-            GRB.MINIMIZE
+            GRB.MAXIMIZE
         )
 
         self.con["balance"] = m.addConstrs(
@@ -186,39 +178,8 @@ class FlexibleConsumerModel:
             name="export_min"
         )
 
-        self.con["deviation_min"] = m.addConstrs(
-            (
-                -deviation[t] <= 0
-                for t in T
-            ),
-            name="deviation_min"
-        )
-
-        self.con["deviation_pos"] = m.addConstrs(
-            (
-                load[t]
-                - d.reference_load[t]
-                - deviation[t]
-                <= 0
-                for t in T
-            ),
-            name="deviation_pos"
-        )
-
-        self.con["deviation_neg"] = m.addConstrs(
-            (
-                d.reference_load[t]
-                - load[t]
-                - deviation[t]
-                <= 0
-                for t in T
-            ),
-            name="deviation_neg"
-        )
-
         m.update()
         return self
-
     # ------------------------------------------------------------------ 3. solve
     def solve(self) -> Results:
         """Optimise and return primal values, objective and dual values."""
