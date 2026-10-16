@@ -71,12 +71,12 @@ class InputData:
     quadratic_disutility: float #| None    # DKK per kWh^2 of deviation from reference_load
 
     # Battery (Q3_battery only; from the "storages" catalogue; all None when absent)
-    battery_capacity_kWh: float# | None = None
-    battery_max_charge_kW: float #| None = None
-    battery_max_discharge_kW: float #| None = None
-    battery_charging_efficiency: float #| None = None      # fraction of charged energy reaching the battery
-    battery_discharging_efficiency: float #| None = None   # fraction of discharged energy reaching the consumer
-    battery_initial_soc_kWh: float #| None = None          # state of charge at the start of the day
+    battery_capacity_kWh: float | None = None
+    battery_max_charge_kW: float | None = None
+    battery_max_discharge_kW: float | None = None
+    battery_charging_efficiency: float | None = None      # fraction of charged energy reaching the battery
+    battery_discharging_efficiency: float | None = None   # fraction of discharged energy reaching the consumer
+    battery_initial_soc_kWh: float | None = None          # state of charge at the start of the day
     battery_final_soc_kWh: float | None = None            # None ON PURPOSE: the end-of-horizon treatment is
                                                           # your modeling choice (Question 3.(g))
 
