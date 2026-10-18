@@ -83,69 +83,60 @@ class FlexibleConsumerModel:
 
     # ------------------------------------------------------------------ 2. build
     def build(self) -> "FlexibleConsumerModel":
-        """Build Question 2e:
-        Quadratic disutility with temporal coupling.
+        """
+        Question 2e:
+        Non-time-separable disutility based on consecutive deviations.
 
-        The model penalises both:
-            1) the instantaneous deviation from the reference load, and
-            2) an accumulated deviation state.
+        From the notes:
 
-        State dynamics:
-            s_t = rho * s_(t-1) + (L_ref_t - L_t)
+            D_t =
+            [cQ + (L_ref[t-1] - L[t-1])^2]
+            * (L_ref[t] - L[t])^2
 
-        Total disutility:
-            cQ * (L_t - L_ref_t)^2 + cS * s_t^2
+        Introduce
+
+            z_t = (L_t - L_ref_t)^2
+
+        so that
+
+            D_t = cQ * z_t + z_{t-1} * z_t.
+
+        For the first hour, the previous deviation is assumed to be zero:
+
+            D_0 = cQ * z_0.
+
+        The bilinear term z[t-1] * z[t] makes the model non-convex.
         """
 
         d, m, T = self.data, self.m, self.T
 
-        # ------------------------------------------------------------------
-        # Effective import and export prices
-        # ------------------------------------------------------------------
+        # ----------------------------------------------------------
+        # Effective import/export prices
+        # ----------------------------------------------------------
 
-        # Import price = market price + import tariff
         p_imp = d.energy_price + d.import_tariff
-
-        # Export price = market price - export tariff
         p_exp = d.energy_price - d.export_tariff
 
-        # ------------------------------------------------------------------
-        # Required input checks
-        # ------------------------------------------------------------------
+        # ----------------------------------------------------------
+        # Required inputs
+        # ----------------------------------------------------------
 
         if d.reference_load is None:
             raise ValueError(
-                "Question 2e requires a reference load profile "
-                "(data.reference_load is None)."
+                "Question 2e requires a reference load profile."
             )
 
         if d.quadratic_disutility is None:
             raise ValueError(
-                "Question 2e uses the quadratic instantaneous disutility "
-                "coefficient from Question 2c "
-                "(data.quadratic_disutility is None)."
+                "Question 2e requires the quadratic disutility parameter."
             )
 
-        # ------------------------------------------------------------------
-        # Temporal-disutility parameters
-        # ------------------------------------------------------------------
-        #
-        # rho determines how much previous deviation remains in the state:
-        #
-        # rho close to 0 -> short memory
-        # rho close to 1 -> long memory
-        #
-        # c_state determines how strongly sustained deviations are penalised.
+        # Required because z[t-1] * z[t] is bilinear
+        m.Params.NonConvex = 2
 
-        rho = 0.8
-        c_state = 0.5
-
-        # ------------------------------------------------------------------
+        # ----------------------------------------------------------
         # Decision variables
-        # ------------------------------------------------------------------
-        #
-        # The usual physical variables are declared free because the bounds
-        # for which dual values are wanted are added explicitly below.
+        # ----------------------------------------------------------
 
         self.var["import"] = m.addVars(
             T,
@@ -175,75 +166,81 @@ class FlexibleConsumerModel:
             name="pv"
         )
 
-        # New state variable:
-        #
-        # accumulated deviation / discomfort state
-        #
-        # It is allowed to be positive or negative, although in the present
-        # application the optimal load is generally expected to remain below
-        # the reference profile.
-        self.var["state"] = m.addVars(
+        # z_t represents the squared deviation from the reference load
+        self.var["deviation_sq"] = m.addVars(
             T,
-            lb=-GRB.INFINITY,
+            lb=0.0,
             vtype=GRB.CONTINUOUS,
-            name="state"
+            name="deviation_sq"
         )
 
-        # Short names
         p_import = self.var["import"]
         p_export = self.var["export"]
         load = self.var["load"]
         pv = self.var["pv"]
-        state = self.var["state"]
+        z = self.var["deviation_sq"]
 
-        # ------------------------------------------------------------------
-        # Objective function
-        # ------------------------------------------------------------------
+        # ----------------------------------------------------------
+        # Objective
         #
-        # Maximise:
+        # D_0 = cQ * z_0
         #
-        #   - instantaneous quadratic disutility
-        #   - accumulated / sustained disutility
-        #   - PV production cost
-        #   - grid import cost
-        #   + grid export revenue
+        # D_t = cQ * z_t + z_(t-1) * z_t,  t > 0
         #
-        # D_t =
-        #     cQ * (L_t - L_ref_t)^2
-        #   + c_state * state_t^2
+        # Minimize:
+        #
+        # temporal disutility
+        # + PV production cost
+        # + import cost
+        # - export revenue
+        # ----------------------------------------------------------
 
-        m.setObjective(
-            gp.quicksum(
-
-                # Instantaneous deviation penalty
-                - d.quadratic_disutility
-                * (load[t] - d.reference_load[t])
-                * (load[t] - d.reference_load[t])
-
-                # Temporal / accumulated deviation penalty
-                - c_state * state[t] * state[t]
-
-                # PV production cost
-                - d.pv_marginal_cost * pv[t]
-
-                # Grid import cost
-                - p_imp[t] * p_import[t]
-
-                # Grid export revenue
-                + p_exp[t] * p_export[t]
-
-                for t in T
-            ),
-            GRB.MAXIMIZE
+        disutility = gp.quicksum(
+            d.quadratic_disutility * z[t]
+            for t in T
         )
 
-        # ------------------------------------------------------------------
-        # Constraints
-        # ------------------------------------------------------------------
+        disutility += gp.quicksum(
+            z[t - 1] * z[t]
+            for t in T
+            if t > 0
+        )
 
-        # 1. Hourly power balance
+        procurement = gp.quicksum(
+            d.pv_marginal_cost * pv[t]
+            + p_imp[t] * p_import[t]
+            - p_exp[t] * p_export[t]
+            for t in T
+        )
+
+        m.setObjective(
+            disutility + procurement,
+            GRB.MINIMIZE
+        )
+
+        # ----------------------------------------------------------
+        # Squared deviation
         #
-        # PV + import = load + export
+        # z_t >= (L_t - L_ref_t)^2
+        #
+        # Since z_t is positively penalised, this will be tight
+        # at the optimum.
+        # ----------------------------------------------------------
+
+        self.con["deviation_sq"] = m.addConstrs(
+            (
+                (load[t] - d.reference_load[t]) ** 2 <= z[t]
+                for t in T
+            ),
+            name="deviation_sq"
+        )
+
+        # ----------------------------------------------------------
+        # Hourly power balance
+        #
+        # load + export - PV - import = 0
+        # ----------------------------------------------------------
+
         self.con["balance"] = m.addConstrs(
             (
                 load[t]
@@ -256,13 +253,10 @@ class FlexibleConsumerModel:
             name="balance"
         )
 
-        # ------------------------------------------------------------------
-        # PV bounds
-        # ------------------------------------------------------------------
+        # ----------------------------------------------------------
+        # PV lower bound
+        # ----------------------------------------------------------
 
-        # 2. PV lower bound
-        #
-        # PV_t >= 0
         self.con["pv_min"] = m.addConstrs(
             (
                 -pv[t] <= 0
@@ -271,9 +265,10 @@ class FlexibleConsumerModel:
             name="pv_min"
         )
 
-        # 3. PV availability
-        #
-        # PV_t <= PV_t^max
+        # ----------------------------------------------------------
+        # PV availability
+        # ----------------------------------------------------------
+
         self.con["pv_max"] = m.addConstrs(
             (
                 pv[t] - d.pv_available[t] <= 0
@@ -282,13 +277,10 @@ class FlexibleConsumerModel:
             name="pv_max"
         )
 
-        # ------------------------------------------------------------------
-        # Load bounds
-        # ------------------------------------------------------------------
+        # ----------------------------------------------------------
+        # Load lower bound
+        # ----------------------------------------------------------
 
-        # 4. Load lower bound
-        #
-        # L_t >= L_min
         self.con["load_min"] = m.addConstrs(
             (
                 d.load_min_kWh - load[t] <= 0
@@ -297,9 +289,10 @@ class FlexibleConsumerModel:
             name="load_min"
         )
 
-        # 5. Load upper bound
-        #
-        # L_t <= L_max
+        # ----------------------------------------------------------
+        # Load upper bound
+        # ----------------------------------------------------------
+
         self.con["load_max"] = m.addConstrs(
             (
                 load[t] - d.load_max_kWh <= 0
@@ -308,11 +301,10 @@ class FlexibleConsumerModel:
             name="load_max"
         )
 
-        # ------------------------------------------------------------------
-        # Import / export non-negativity
-        # ------------------------------------------------------------------
+        # ----------------------------------------------------------
+        # Import non-negativity
+        # ----------------------------------------------------------
 
-        # 6. Import >= 0
         self.con["import_min"] = m.addConstrs(
             (
                 -p_import[t] <= 0
@@ -321,7 +313,10 @@ class FlexibleConsumerModel:
             name="import_min"
         )
 
-        # 7. Export >= 0
+        # ----------------------------------------------------------
+        # Export non-negativity
+        # ----------------------------------------------------------
+
         self.con["export_min"] = m.addConstrs(
             (
                 -p_export[t] <= 0
@@ -329,58 +324,6 @@ class FlexibleConsumerModel:
             ),
             name="export_min"
         )
-
-        # ------------------------------------------------------------------
-        # Temporal coupling / state dynamics
-        # ------------------------------------------------------------------
-        #
-        # Define deviation as:
-        #
-        # delta_t = L_ref_t - L_t
-        #
-        # and accumulated state:
-        #
-        # state_t = rho * state_(t-1) + delta_t
-        #
-        # Before the first hour, the state is assumed to be zero.
-        #
-        # Therefore:
-        #
-        # state_0 = L_ref_0 - L_0
-        #
-        # and for t > 0:
-        #
-        # state_t =
-        #     rho * state_(t-1)
-        #     + L_ref_t
-        #     - L_t
-
-        self.con["state_balance"] = m.addConstrs(
-            (
-                state[t]
-                ==
-                (
-                    d.reference_load[t] - load[t]
-                    if t == 0
-                    else
-                    rho * state[t - 1]
-                    + d.reference_load[t]
-                    - load[t]
-                )
-                for t in T
-            ),
-            name="state_balance"
-        )
-
-        # ------------------------------------------------------------------
-        # Store useful parameters for later analysis
-        # ------------------------------------------------------------------
-        #
-        # This is optional, but makes it easier to remember which temporal
-        # parameters were used for the run.
-
-        self.temporal_rho = rho
-        self.temporal_disutility = c_state
 
         m.update()
 

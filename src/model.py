@@ -83,49 +83,163 @@ class FlexibleConsumerModel:
 
     # ------------------------------------------------------------------ 2. build
     def build(self) -> "FlexibleConsumerModel":
-        """Question 1:
-        Constant marginal utility.
+        """
+        Question 2e:
+        Non-time-separable disutility based on consecutive deviations.
+
+        From the notes:
+
+            D_t =
+            [cQ + (L_ref[t-1] - L[t-1])^2]
+            * (L_ref[t] - L[t])^2
+
+        Introduce
+
+            z_t = (L_t - L_ref_t)^2
+
+        so that
+
+            D_t = cQ * z_t + z_{t-1} * z_t.
+
+        For the first hour, the previous deviation is assumed to be zero:
+
+            D_0 = cQ * z_0.
+
+        The bilinear term z[t-1] * z[t] makes the model non-convex.
         """
 
         d, m, T = self.data, self.m, self.T
 
+        # ----------------------------------------------------------
+        # Effective import/export prices
+        # ----------------------------------------------------------
+
         p_imp = d.energy_price + d.import_tariff
         p_exp = d.energy_price - d.export_tariff
 
-        if d.consumption_utility is None:
-            raise ValueError("Question 1 requires consumption utility.")
+        # ----------------------------------------------------------
+        # Required inputs
+        # ----------------------------------------------------------
+
+        if d.reference_load is None:
+            raise ValueError(
+                "Question 2e requires a reference load profile."
+            )
+
+        if d.quadratic_disutility is None:
+            raise ValueError(
+                "Question 2e requires the quadratic disutility parameter."
+            )
+
+        # Required because z[t-1] * z[t] is bilinear
+        m.Params.NonConvex = 2
+
+        # ----------------------------------------------------------
+        # Decision variables
+        # ----------------------------------------------------------
 
         self.var["import"] = m.addVars(
-            T, lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS, name="import"
+            T,
+            lb=-GRB.INFINITY,
+            vtype=GRB.CONTINUOUS,
+            name="import"
         )
 
         self.var["export"] = m.addVars(
-            T, lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS, name="export"
+            T,
+            lb=-GRB.INFINITY,
+            vtype=GRB.CONTINUOUS,
+            name="export"
         )
 
         self.var["load"] = m.addVars(
-            T, lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS, name="load"
+            T,
+            lb=-GRB.INFINITY,
+            vtype=GRB.CONTINUOUS,
+            name="load"
         )
 
         self.var["pv"] = m.addVars(
-            T, lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS, name="pv"
+            T,
+            lb=-GRB.INFINITY,
+            vtype=GRB.CONTINUOUS,
+            name="pv"
+        )
+
+        # z_t represents the squared deviation from the reference load
+        self.var["deviation_sq"] = m.addVars(
+            T,
+            lb=0.0,
+            vtype=GRB.CONTINUOUS,
+            name="deviation_sq"
         )
 
         p_import = self.var["import"]
         p_export = self.var["export"]
         load = self.var["load"]
         pv = self.var["pv"]
+        z = self.var["deviation_sq"]
+
+        # ----------------------------------------------------------
+        # Objective
+        #
+        # D_0 = cQ * z_0
+        #
+        # D_t = cQ * z_t + z_(t-1) * z_t,  t > 0
+        #
+        # Minimize:
+        #
+        # temporal disutility
+        # + PV production cost
+        # + import cost
+        # - export revenue
+        # ----------------------------------------------------------
+
+        disutility = gp.quicksum(
+            d.quadratic_disutility * z[t]
+            for t in T
+        )
+
+        disutility += gp.quicksum(
+            z[t - 1] * z[t]
+            for t in T
+            if t > 0
+        )
+
+        procurement = gp.quicksum(
+            d.pv_marginal_cost * pv[t]
+            + p_imp[t] * p_import[t]
+            - p_exp[t] * p_export[t]
+            for t in T
+        )
 
         m.setObjective(
-            gp.quicksum(
-                d.consumption_utility * load[t]
-                - d.pv_marginal_cost * pv[t]
-                - p_imp[t] * p_import[t]
-                + p_exp[t] * p_export[t]
+            disutility + procurement,
+            GRB.MINIMIZE
+        )
+
+        # ----------------------------------------------------------
+        # Squared deviation
+        #
+        # z_t >= (L_t - L_ref_t)^2
+        #
+        # Since z_t is positively penalised, this will be tight
+        # at the optimum.
+        # ----------------------------------------------------------
+
+        self.con["deviation_sq"] = m.addConstrs(
+            (
+                (load[t] - d.reference_load[t]) ** 2 <= z[t]
                 for t in T
             ),
-            GRB.MAXIMIZE
+            name="deviation_sq"
         )
+
+        # ----------------------------------------------------------
+        # Hourly power balance
+        #
+        # load + export - PV - import = 0
+        # ----------------------------------------------------------
 
         self.con["balance"] = m.addConstrs(
             (
@@ -139,10 +253,21 @@ class FlexibleConsumerModel:
             name="balance"
         )
 
+        # ----------------------------------------------------------
+        # PV lower bound
+        # ----------------------------------------------------------
+
         self.con["pv_min"] = m.addConstrs(
-            (-pv[t] <= 0 for t in T),
+            (
+                -pv[t] <= 0
+                for t in T
+            ),
             name="pv_min"
         )
+
+        # ----------------------------------------------------------
+        # PV availability
+        # ----------------------------------------------------------
 
         self.con["pv_max"] = m.addConstrs(
             (
@@ -152,6 +277,10 @@ class FlexibleConsumerModel:
             name="pv_max"
         )
 
+        # ----------------------------------------------------------
+        # Load lower bound
+        # ----------------------------------------------------------
+
         self.con["load_min"] = m.addConstrs(
             (
                 d.load_min_kWh - load[t] <= 0
@@ -159,6 +288,10 @@ class FlexibleConsumerModel:
             ),
             name="load_min"
         )
+
+        # ----------------------------------------------------------
+        # Load upper bound
+        # ----------------------------------------------------------
 
         self.con["load_max"] = m.addConstrs(
             (
@@ -168,18 +301,34 @@ class FlexibleConsumerModel:
             name="load_max"
         )
 
+        # ----------------------------------------------------------
+        # Import non-negativity
+        # ----------------------------------------------------------
+
         self.con["import_min"] = m.addConstrs(
-            (-p_import[t] <= 0 for t in T),
+            (
+                -p_import[t] <= 0
+                for t in T
+            ),
             name="import_min"
         )
 
+        # ----------------------------------------------------------
+        # Export non-negativity
+        # ----------------------------------------------------------
+
         self.con["export_min"] = m.addConstrs(
-            (-p_export[t] <= 0 for t in T),
+            (
+                -p_export[t] <= 0
+                for t in T
+            ),
             name="export_min"
         )
 
         m.update()
+
         return self
+
     # ------------------------------------------------------------------ 3. solve
     def solve(self) -> Results:
         """Optimise and return primal values, objective and dual values."""
